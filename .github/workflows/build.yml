@@ -1,0 +1,31 @@
+on: [push, pull_request]
+name: Build (and Release)
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build (and Release)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+          fetch-depth: 0
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          echo CARGO_INCREMENTAL=0 >> $GITHUB_ENV
+          echo CARGO_TERM_COLOR=always >> $GITHUB_ENV        
+
+      - name: Build lib (native)
+        run: |
+          cargo build --verbose
+
+      - name: Test lib (native)
+        run: |
+          cargo test --verbose

@@ -1,0 +1,3 @@
+[workspace]
+members = ["neotron-romfs", "mkfs", "lsfs"]
+resolver = "2"
