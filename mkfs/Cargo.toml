@@ -1,0 +1,12 @@
+[package]
+name = "neotron-romfs-mkfs"
+version = "0.1.0"
+edition = "2021"
+description = "Build a Neotron ROM-FS image"
+repository = "https://github.com/Neotron-Compute/neotron-romfs"
+license = "GPL-3.0-or-later"
+
+[dependencies]
+neotron-romfs = { version = "1.0", path = "../neotron-romfs" }
+neotron-api = "0.1"
+chrono = "0.4.38"
