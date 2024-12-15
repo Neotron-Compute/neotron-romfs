@@ -10,3 +10,4 @@ license = "GPL-3.0-or-later"
 neotron-romfs = { version = "1.0", path = "../neotron-romfs" }
 neotron-api = "0.1"
 chrono = "0.4.38"
+embedded-io = { version = "0.6.1", features = ["std"] }

@@ -1,7 +1,12 @@
-use std::{io::Write, os::unix::fs::MetadataExt};
+//! Neotron mkfs utility - makes Neotron ROM Filesytems
+//!
+//! * Takes a series of command-line arguments, which should each be a path to file.
+//! * Writes a valid ROMFS image to `stdout`, containing all those files.
 
 use chrono::{Datelike, Timelike};
+use std::io::Write;
 
+/// Entry point to the binary
 fn main() -> Result<(), std::io::Error> {
     let mut entries = Vec::new();
     for file_path in std::env::args_os().skip(1) {
@@ -14,10 +19,9 @@ fn main() -> Result<(), std::io::Error> {
         let Some(file_name_str) = file_name.to_str() else {
             panic!("Path {} has a non UTF-8 filename", file_path.display());
         };
-        let stats = std::fs::metadata(file_path)?;
-        let Some(ctime) = chrono::DateTime::from_timestamp(stats.ctime(), 0) else {
-            panic!("Unable to construct date/time from {:?}", stats);
-        };
+        let metadata = std::fs::metadata(file_path)?;
+        let ctime = metadata.created().unwrap_or(std::time::SystemTime::now());
+        let ctime = chrono::DateTime::<chrono::Utc>::from(ctime);
         let entry = neotron_romfs::Entry {
             metadata: neotron_romfs::EntryMetadata {
                 file_name: file_name_str.to_owned(),
@@ -37,12 +41,11 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     // make this plenty big enough
-    let mut output: Vec<u8> = vec![0u8; neotron_romfs::RomFs::size_required(&entries)];
-    match neotron_romfs::RomFs::construct(&mut output, &entries) {
-        Ok(n) => {
-            let valid = &output[0..n];
+    let mut output: Vec<u8> = Vec::new();
+    match neotron_romfs::RomFs::construct_into(&mut output, &entries) {
+        Ok(_n) => {
             let mut out = std::io::stdout();
-            out.write_all(valid)?;
+            out.write_all(&output)?;
         }
         Err(e) => {
             panic!("Failed to build ROMFS: {:?}", e);
