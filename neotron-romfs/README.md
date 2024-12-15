@@ -18,5 +18,5 @@ fn process_rom(data: &[u8]) -> Result<(), neotron_romfs::Error> {
 
 Copyright (c) The Neotron Developers, 2024
 
-Licensed under either [MIT](../LICENSE-MIT) or [Apache-2.0](../LICENSE-APACHE) at
+Licensed under either [MIT](./LICENSE-MIT) or [Apache-2.0](./LICENSE-APACHE) at
 your option.
