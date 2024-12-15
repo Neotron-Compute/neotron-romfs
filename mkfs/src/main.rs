@@ -1,7 +1,26 @@
-use std::{io::Write, os::unix::fs::MetadataExt};
+//! Neotron mkfs utility - makes Neotron ROM Filesytems
+//!
+//! * Takes a series of command-line arguments, which should each be a path to file.
+//! * Writes a valid ROMFS image to `stdout`, containing all those files.
+//!
+//! ```console
+//! $ cargo run --bin neotron-romfs-mkfs Cargo.toml LICENSE-MIT > image.rom
+//! Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
+//! Running `target\debug\neotron-romfs-mkfs.exe Cargo.toml LICENSE-MIT`
+//! Loading Cargo.toml
+//! Loading LICENSE-MIT
+//! $ cargo run --bin neotron-romfs-lsfs image.rom
+//!    Compiling neotron-romfs-lsfs v0.1.0 (C:\Users\msn\Documents\github\neotron-romfs\lsfs)
+//!     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.34s
+//!      Running `target\debug\neotron-romfs-lsfs.exe image.rom`
+//! Found name="Cargo.toml", ctime=2024-12-15T18:06:15Z, size=74
+//! Found name="LICENSE-MIT", ctime=2024-12-15T18:06:15Z, size=1101
+//! ```
 
+use std::io::Write;
 use chrono::{Datelike, Timelike};
 
+/// Entry point to the binary
 fn main() -> Result<(), std::io::Error> {
     let mut entries = Vec::new();
     for file_path in std::env::args_os().skip(1) {
@@ -14,10 +33,9 @@ fn main() -> Result<(), std::io::Error> {
         let Some(file_name_str) = file_name.to_str() else {
             panic!("Path {} has a non UTF-8 filename", file_path.display());
         };
-        let stats = std::fs::metadata(file_path)?;
-        let Some(ctime) = chrono::DateTime::from_timestamp(stats.ctime(), 0) else {
-            panic!("Unable to construct date/time from {:?}", stats);
-        };
+        let metadata = std::fs::metadata(file_path)?;
+        let ctime = metadata.created().unwrap_or(std::time::SystemTime::now());
+        let ctime = chrono::DateTime::<chrono::Utc>::from(ctime);
         let entry = neotron_romfs::Entry {
             metadata: neotron_romfs::EntryMetadata {
                 file_name: file_name_str.to_owned(),
