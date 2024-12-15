@@ -40,4 +40,4 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 ```
 
-The full text is [here](../GPL-3.0-or-later.txt)
+The full text is [here](./GPL-3.0-or-later.txt)
