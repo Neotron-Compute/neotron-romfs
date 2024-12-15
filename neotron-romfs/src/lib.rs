@@ -28,6 +28,7 @@
 
 /// The ways in which this module can fail
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Error {
     /// We didn't see the magic number at the start of the ROMFS
     InvalidMagicHeader,
