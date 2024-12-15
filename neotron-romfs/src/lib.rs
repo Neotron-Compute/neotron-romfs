@@ -41,6 +41,8 @@ pub enum Error {
     FilenameTooLong,
     /// A filename wasn't valid UTF-8
     NonUnicodeFilename,
+    /// There was an error writing to a sink
+    SinkError,
 }
 
 /// The different image formats we support
@@ -80,7 +82,7 @@ impl<'a> RomFs<'a> {
     ///
     /// The buffer must be large enough otherwise an error is returned - see
     /// [`Self::size_required`] to calculate the size of buffer required.
-    pub fn construct<S, T>(buffer: &mut [u8], entries: &[Entry<S, T>]) -> Result<usize, Error>
+    pub fn construct<S, T>(mut buffer: &mut [u8], entries: &[Entry<S, T>]) -> Result<usize, Error>
     where
         S: AsRef<str>,
         T: AsRef<[u8]>,
@@ -89,19 +91,36 @@ impl<'a> RomFs<'a> {
         if buffer.len() < total_size {
             return Err(Error::BufferTooSmall);
         }
-        let mut buffer = buffer;
+        let used = Self::construct_into(&mut buffer, entries)?;
+        Ok(used)
+    }
+
+    /// Construct a ROMFS into the given embedded-io byte sink.
+    ///
+    /// Tells you how many bytes it wrote to the given buffer.
+    pub fn construct_into<S, T, SINK>(
+        buffer: &mut SINK,
+        entries: &[Entry<S, T>],
+    ) -> Result<usize, Error>
+    where
+        S: AsRef<str>,
+        T: AsRef<[u8]>,
+        SINK: embedded_io::Write,
+    {
+        let total_size = Self::size_required(entries);
         let file_header = Header {
             format_version: FormatVersion::Version100,
             total_size: total_size as u32,
         };
-        let used = file_header.to_bytes(buffer)?;
-        buffer = &mut buffer[used..];
+        let mut used = file_header.write_into(buffer)?;
         for entry in entries.iter() {
-            buffer = entry.metadata.to_bytes(buffer)?;
+            used += entry.metadata.write_into(buffer)?;
             let contents: &[u8] = entry.contents.as_ref();
-            buffer[0..contents.len()].copy_from_slice(contents);
-            buffer = &mut buffer[contents.len()..];
+            buffer.write_all(contents).map_err(|_| Error::SinkError)?;
+            used += contents.len();
         }
+
+        assert_eq!(used, total_size);
 
         Ok(total_size)
     }
@@ -223,16 +242,22 @@ impl Header {
     }
 
     /// Write the header to the given buffer
-    fn to_bytes(&self, buffer: &mut [u8]) -> Result<usize, Error> {
-        if buffer.len() < Header::FIXED_SIZE {
-            return Err(Error::BufferTooSmall);
-        }
-        buffer[0..8].copy_from_slice(&Self::MAGIC_VALUE);
-        buffer[8..12].copy_from_slice(match self.format_version {
-            FormatVersion::Version100 => &Self::FORMAT_V100,
-        });
+    fn write_into<SINK>(&self, buffer: &mut SINK) -> Result<usize, Error>
+    where
+        SINK: embedded_io::Write,
+    {
+        buffer
+            .write_all(&Self::MAGIC_VALUE)
+            .map_err(|_| Error::SinkError)?;
+        buffer
+            .write_all(match self.format_version {
+                FormatVersion::Version100 => &Self::FORMAT_V100,
+            })
+            .map_err(|_| Error::SinkError)?;
         let size_bytes = self.total_size.to_be_bytes();
-        buffer[12..16].copy_from_slice(&size_bytes);
+        buffer
+            .write_all(&size_bytes)
+            .map_err(|_| Error::SinkError)?;
         Ok(Header::FIXED_SIZE)
     }
 }
@@ -339,37 +364,43 @@ where
         Ok((stored_entry, &data[Self::SIZE..]))
     }
 
-    /// Write this entry to the buffer.
+    /// Write this entry to the sink.
     ///
-    /// Returns the unused bytes.
-    fn to_bytes<'storage>(&self, buffer: &'storage mut [u8]) -> Result<&'storage mut [u8], Error> {
-        // check the buffer is large enough
-        if buffer.len() < Self::SIZE {
-            return Err(Error::BufferTooSmall);
-        }
+    /// Returns the number of bytes written.
+    fn write_into<SINK>(&self, sink: &mut SINK) -> Result<usize, Error>
+    where
+        SINK: embedded_io::Write,
+    {
         // check the file name isn't too long
-        if self.file_name.as_ref().len() > Self::FILENAME_SIZE {
+        let file_name = self.file_name.as_ref();
+        let file_name_len = file_name.len();
+        let Some(padding_length) = Self::FILENAME_SIZE.checked_sub(file_name_len) else {
             return Err(Error::FilenameTooLong);
-        }
+        };
         // copy file name with null padding
-        let mut file_name_iter = self.file_name.as_ref().as_bytes().iter();
-        for b in &mut buffer[Self::FILENAME_OFFSET..Self::FILENAME_OFFSET + Self::FILENAME_SIZE] {
-            *b = file_name_iter.next().cloned().unwrap_or_default();
+        sink.write_all(file_name.as_bytes())
+            .map_err(|_| Error::SinkError)?;
+        for _ in 0..padding_length {
+            sink.write_all(&[0u8]).map_err(|_| Error::SinkError)?;
         }
         // copy file size
         let file_size = self.file_size.to_be_bytes();
-        for (idx, b) in file_size.iter().enumerate() {
-            buffer[Self::FILESIZE_OFFSET + idx] = *b;
-        }
+        sink.write_all(&file_size).map_err(|_| Error::SinkError)?;
         // copy timestamp
-        buffer[Self::TIMESTAMP_OFFSET] = self.ctime.year_since_1970;
-        buffer[Self::TIMESTAMP_OFFSET + 1] = self.ctime.zero_indexed_month;
-        buffer[Self::TIMESTAMP_OFFSET + 2] = self.ctime.zero_indexed_day;
-        buffer[Self::TIMESTAMP_OFFSET + 3] = self.ctime.hours;
-        buffer[Self::TIMESTAMP_OFFSET + 4] = self.ctime.minutes;
-        buffer[Self::TIMESTAMP_OFFSET + 5] = self.ctime.seconds;
+        sink.write_all(&[self.ctime.year_since_1970])
+            .map_err(|_| Error::SinkError)?;
+        sink.write_all(&[self.ctime.zero_indexed_month])
+            .map_err(|_| Error::SinkError)?;
+        sink.write_all(&[self.ctime.zero_indexed_day])
+            .map_err(|_| Error::SinkError)?;
+        sink.write_all(&[self.ctime.hours])
+            .map_err(|_| Error::SinkError)?;
+        sink.write_all(&[self.ctime.minutes])
+            .map_err(|_| Error::SinkError)?;
+        sink.write_all(&[self.ctime.seconds])
+            .map_err(|_| Error::SinkError)?;
 
-        Ok(&mut buffer[Self::SIZE..])
+        Ok(Self::SIZE)
     }
 }
 

@@ -2,23 +2,9 @@
 //!
 //! * Takes a series of command-line arguments, which should each be a path to file.
 //! * Writes a valid ROMFS image to `stdout`, containing all those files.
-//!
-//! ```console
-//! $ cargo run --bin neotron-romfs-mkfs Cargo.toml LICENSE-MIT > image.rom
-//! Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.03s
-//! Running `target\debug\neotron-romfs-mkfs.exe Cargo.toml LICENSE-MIT`
-//! Loading Cargo.toml
-//! Loading LICENSE-MIT
-//! $ cargo run --bin neotron-romfs-lsfs image.rom
-//!    Compiling neotron-romfs-lsfs v0.1.0 (C:\Users\msn\Documents\github\neotron-romfs\lsfs)
-//!     Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.34s
-//!      Running `target\debug\neotron-romfs-lsfs.exe image.rom`
-//! Found name="Cargo.toml", ctime=2024-12-15T18:06:15Z, size=74
-//! Found name="LICENSE-MIT", ctime=2024-12-15T18:06:15Z, size=1101
-//! ```
 
-use std::io::Write;
 use chrono::{Datelike, Timelike};
+use std::io::Write;
 
 /// Entry point to the binary
 fn main() -> Result<(), std::io::Error> {
@@ -55,12 +41,11 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     // make this plenty big enough
-    let mut output: Vec<u8> = vec![0u8; neotron_romfs::RomFs::size_required(&entries)];
-    match neotron_romfs::RomFs::construct(&mut output, &entries) {
-        Ok(n) => {
-            let valid = &output[0..n];
+    let mut output: Vec<u8> = Vec::new();
+    match neotron_romfs::RomFs::construct_into(&mut output, &entries) {
+        Ok(_n) => {
             let mut out = std::io::stdout();
-            out.write_all(valid)?;
+            out.write_all(&output)?;
         }
         Err(e) => {
             panic!("Failed to build ROMFS: {:?}", e);
